@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useMotionValue, useSpring } from 'motion/react';
+import Lenis from 'lenis';
 
 interface Task {
   id: string;
@@ -15,7 +16,17 @@ interface Task {
 
 const STORAGE_KEY = 'brutalist_todo_tasks';
 const LIME_ACCENT = '#84E425';
-const LIME_DARK = '#74CE18';
+
+const DEFAULT_TASKS: Task[] = [
+  { id: '1', text: 'ESTABLISH ARCHITECTURAL BRUTALIST SYSTEM', completed: true, createdAt: 1 },
+  { id: '2', text: 'CALIBRATE MATHEMATICAL EXPONENTIAL DECAY LERP', completed: false, createdAt: 2 },
+  { id: '3', text: 'ELIMINATE NOTCHED MOUSE WHEEL STEPPING', completed: false, createdAt: 3 },
+  { id: '4', text: 'SYNCHRONIZE CONTINUOUS FRAME-BY-FRAME TIMINGS', completed: false, createdAt: 4 },
+  { id: '5', text: 'TUNE MOMENTUM FRICTION AND VELOCITY ACCUMULATION', completed: false, createdAt: 5 },
+  { id: '6', text: 'UNIFY MAGNETIC AURA AND ROTATING CROSS DETECTORS', completed: true, createdAt: 6 },
+  { id: '7', text: 'VERIFY BUTTERY SMOOTH DUAL-BUFFERED TOUCH FEEL', completed: false, createdAt: 7 },
+  { id: '8', text: 'AUDIT 120FPS GPU SPRING GLIDE RESPONSE', completed: false, createdAt: 8 },
+];
 
 // Apple fluid spring configurations
 const APPLE_SPRING = {
@@ -96,10 +107,14 @@ function CustomMagneticCursor({
   useEffect(() => {
     if (!isFinePointer) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const lastPointerPos = { x: -100, y: -100 };
+
+    const updateTarget = (clientX: number, clientY: number) => {
+      lastPointerPos.x = clientX;
+      lastPointerPos.y = clientY;
       setIsVisible(true);
 
-      const directTarget = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const directTarget = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
 
       if (directTarget) {
         const inputEl = directTarget.closest('input, textarea');
@@ -108,8 +123,8 @@ function CustomMagneticCursor({
           setSnappedButtonId(null);
           setCursorType('text');
           setTargetDims({ width: 3, height: 24, radius: 2 });
-          mouseX.set(e.clientX);
-          mouseY.set(e.clientY);
+          mouseX.set(clientX);
+          mouseY.set(clientY);
           return;
         }
       }
@@ -126,7 +141,7 @@ function CustomMagneticCursor({
 
         for (const btn of buttons) {
           const rect = btn.getBoundingClientRect();
-          const dist = getDistanceToRect(e.clientX, e.clientY, rect);
+          const dist = getDistanceToRect(clientX, clientY, rect);
           if (dist <= SNAP_DISTANCE && dist < closestDist) {
             closestDist = dist;
             targetButton = btn;
@@ -144,8 +159,8 @@ function CustomMagneticCursor({
 
         // True magnetic attraction: strong lock onto the button center (82% pull)
         const pull = 0.82;
-        const magneticX = e.clientX + (centerX - e.clientX) * pull;
-        const magneticY = e.clientY + (centerY - e.clientY) * pull;
+        const magneticX = clientX + (centerX - clientX) * pull;
+        const magneticY = clientY + (centerY - clientY) * pull;
 
         mouseX.set(magneticX);
         mouseY.set(magneticY);
@@ -159,8 +174,19 @@ function CustomMagneticCursor({
         setSnappedButtonId(null);
         setCursorType('default');
         setTargetDims({ width: 13, height: 13, radius: 9999 });
-        mouseX.set(e.clientX);
-        mouseY.set(e.clientY);
+        mouseX.set(clientX);
+        mouseY.set(clientY);
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      updateTarget(e.clientX, e.clientY);
+    };
+
+    // Re-evaluate magnetic targeting smoothly as page scrolls with momentum
+    const handleScroll = () => {
+      if (lastPointerPos.x >= 0 && lastPointerPos.y >= 0) {
+        updateTarget(lastPointerPos.x, lastPointerPos.y);
       }
     };
 
@@ -203,6 +229,7 @@ function CustomMagneticCursor({
     const handleMouseEnter = () => setIsVisible(true);
 
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    window.addEventListener('scroll', handleScroll, { passive: true });
     window.addEventListener('click', handleClickCapture, { capture: true });
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
@@ -211,6 +238,7 @@ function CustomMagneticCursor({
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('click', handleClickCapture, { capture: true });
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -266,17 +294,71 @@ function CustomMagneticCursor({
   );
 }
 
+/**
+ * Mathematical Easing Momentum Scroll:
+ * Uses a requestAnimationFrame loop with Lenis's continuous exponential decay damping:
+ * damp(current, target, lambda, dt) = lerp(current, target, 1 - exp(-lambda * dt))
+ * Scroll velocity ramps up smoothly with mouse wheel inputs and glides to a stop using calculated friction.
+ * Frame-by-frame continuous synchronization ensures zero stepped notches on mouse scroll wheels.
+ */
+function useLenisSmoothScroll() {
+  useEffect(() => {
+    // Unconditional mathematical momentum scrolling (reduced motion check bypassed per request)
+    const lenis = new Lenis({
+      lerp: 0.08, // Continuous frame-rate independent mathematical lerp
+      wheelMultiplier: 1.0,
+      touchMultiplier: 1.5,
+      smoothWheel: true,
+      syncTouch: true, // Smooth touch momentum
+      syncTouchLerp: 0.075,
+      touchInertiaExponent: 1.7,
+      infinite: false,
+      autoResize: true,
+      respectReducedMotion: false, // Explicitly false so smooth momentum is always active
+    });
+
+    // Synchronize with GSAP ScrollTrigger if present
+    lenis.on('scroll', () => {
+      const globalScrollTrigger = (window as unknown as { ScrollTrigger?: { update?: () => void } }).ScrollTrigger;
+      if (globalScrollTrigger && typeof globalScrollTrigger.update === 'function') {
+        globalScrollTrigger.update();
+      }
+    });
+
+    // Expose globally for GSAP integration or external debug/controls
+    (window as unknown as { lenis?: Lenis }).lenis = lenis;
+
+    let rafId: number;
+    function raf(time: number) {
+      lenis.raf(time);
+      rafId = requestAnimationFrame(raf);
+    }
+    rafId = requestAnimationFrame(raf);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      lenis.destroy();
+      delete (window as unknown as { lenis?: Lenis }).lenis;
+    };
+  }, []);
+}
+
 export default function App() {
+  useLenisSmoothScroll();
+
   const [tasks, setTasks] = useState<Task[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       }
     } catch {
       // fallback
     }
-    return [];
+    return DEFAULT_TASKS;
   });
 
   const [inputVal, setInputVal] = useState('');
