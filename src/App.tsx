@@ -51,7 +51,24 @@ const LAYOUT_GLIDE_SPRING = {
 // Slower, luxurious Apple easing curve for sweeps & draws
 const APPLE_EASE = [0.16, 1, 0.3, 1] as const;
 
-function CustomMagneticCursor() {
+// Accurate point-to-rectangle Euclidean distance for consistent radial hit detection in all directions
+function getDistanceToRect(px: number, py: number, rect: DOMRect) {
+  const dx = Math.max(rect.left - px, 0, px - rect.right);
+  const dy = Math.max(rect.top - py, 0, py - rect.bottom);
+  return Math.hypot(dx, dy);
+}
+
+interface CustomMagneticCursorProps {
+  snappedButtonId: string | null;
+  setSnappedButtonId: React.Dispatch<React.SetStateAction<string | null>>;
+  isSnappedClicking: boolean;
+  setIsSnappedClicking: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+function CustomMagneticCursor({
+  setSnappedButtonId,
+  setIsSnappedClicking,
+}: CustomMagneticCursorProps) {
   const [cursorType, setCursorType] = useState<'default' | 'button' | 'text'>('default');
   const [targetDims, setTargetDims] = useState({ width: 13, height: 13, radius: 9999 });
   const [isClicking, setIsClicking] = useState(false);
@@ -61,7 +78,6 @@ function CustomMagneticCursor() {
   const mouseX = useMotionValue(-100);
   const mouseY = useMotionValue(-100);
   const snappedButtonRef = useRef<HTMLElement | null>(null);
-  const lastSnappedElRef = useRef<HTMLElement | null>(null);
 
   // Apple fluid spring for trailing magnetic cursor
   const springConfig = { stiffness: 600, damping: 32, mass: 0.4 };
@@ -88,12 +104,8 @@ function CustomMagneticCursor() {
       if (directTarget) {
         const inputEl = directTarget.closest('input, textarea');
         if (inputEl) {
-          if (lastSnappedElRef.current) {
-            lastSnappedElRef.current.classList.remove('magnetic-snapped');
-            lastSnappedElRef.current.removeAttribute('data-snapped');
-            lastSnappedElRef.current = null;
-          }
           snappedButtonRef.current = null;
+          setSnappedButtonId(null);
           setCursorType('text');
           setTargetDims({ width: 3, height: 24, radius: 2 });
           mouseX.set(e.clientX);
@@ -102,54 +114,36 @@ function CustomMagneticCursor() {
         }
       }
 
-      // Check for directly hovered button or proximity snap (iPadOS magnetic field)
-      let targetButton: HTMLElement | null = directTarget?.closest('button, [role="button"], a') || null;
+      // Check directly hovered button first
+      let targetButton: HTMLElement | null =
+        directTarget?.closest('button, [role="button"], a') || null;
 
-      // If not directly over button, scan interactive buttons within a 24px magnetic aura
+      // Scan interactive buttons with generous, consistent 32px radial hit detection in every direction
       if (!targetButton) {
         const buttons = document.querySelectorAll<HTMLElement>('button, [role="button"]');
         let closestDist = Infinity;
-        const snapAura = 24; // 24px magnetic detection field
+        const SNAP_DISTANCE = 32;
 
         for (const btn of buttons) {
           const rect = btn.getBoundingClientRect();
-          if (
-            e.clientX >= rect.left - snapAura &&
-            e.clientX <= rect.right + snapAura &&
-            e.clientY >= rect.top - snapAura &&
-            e.clientY <= rect.bottom + snapAura
-          ) {
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
-            if (dist < closestDist) {
-              closestDist = dist;
-              targetButton = btn;
-            }
+          const dist = getDistanceToRect(e.clientX, e.clientY, rect);
+          if (dist <= SNAP_DISTANCE && dist < closestDist) {
+            closestDist = dist;
+            targetButton = btn;
           }
         }
       }
 
       if (targetButton) {
-        // Activate button hover animation via magnetic-snapped class
-        if (lastSnappedElRef.current !== targetButton) {
-          if (lastSnappedElRef.current) {
-            lastSnappedElRef.current.classList.remove('magnetic-snapped');
-            lastSnappedElRef.current.removeAttribute('data-snapped');
-          }
-          targetButton.classList.add('magnetic-snapped');
-          targetButton.setAttribute('data-snapped', 'true');
-          lastSnappedElRef.current = targetButton;
-        }
-
         snappedButtonRef.current = targetButton;
+        setSnappedButtonId(targetButton.id || null);
         setCursorType('button');
         const rect = targetButton.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
 
-        // True magnetic attraction: strong lock onto the button center (80% pull)
-        const pull = 0.8;
+        // True magnetic attraction: strong lock onto the button center (82% pull)
+        const pull = 0.82;
         const magneticX = e.clientX + (centerX - e.clientX) * pull;
         const magneticY = e.clientY + (centerY - e.clientY) * pull;
 
@@ -161,12 +155,8 @@ function CustomMagneticCursor() {
         const hugH = Math.min(Math.max(rect.height + 10, 36), 56);
         setTargetDims({ width: hugW, height: hugH, radius: Math.min(rect.height / 2 + 4, 12) });
       } else {
-        if (lastSnappedElRef.current) {
-          lastSnappedElRef.current.classList.remove('magnetic-snapped');
-          lastSnappedElRef.current.removeAttribute('data-snapped');
-          lastSnappedElRef.current = null;
-        }
         snappedButtonRef.current = null;
+        setSnappedButtonId(null);
         setCursorType('default');
         setTargetDims({ width: 13, height: 13, radius: 9999 });
         mouseX.set(e.clientX);
@@ -195,17 +185,20 @@ function CustomMagneticCursor() {
     };
 
     const handleMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) setIsClicking(true);
+      if (e.button === 0) {
+        setIsClicking(true);
+        setIsSnappedClicking(true);
+      }
     };
-    const handleMouseUp = () => setIsClicking(false);
+    const handleMouseUp = () => {
+      setIsClicking(false);
+      setIsSnappedClicking(false);
+    };
     const handleMouseLeave = () => {
       setIsVisible(false);
-      if (lastSnappedElRef.current) {
-        lastSnappedElRef.current.classList.remove('magnetic-snapped');
-        lastSnappedElRef.current.removeAttribute('data-snapped');
-        lastSnappedElRef.current = null;
-      }
       snappedButtonRef.current = null;
+      setSnappedButtonId(null);
+      setIsSnappedClicking(false);
     };
     const handleMouseEnter = () => setIsVisible(true);
 
@@ -217,11 +210,6 @@ function CustomMagneticCursor() {
     document.addEventListener('mouseenter', handleMouseEnter);
 
     return () => {
-      if (lastSnappedElRef.current) {
-        lastSnappedElRef.current.classList.remove('magnetic-snapped');
-        lastSnappedElRef.current.removeAttribute('data-snapped');
-        lastSnappedElRef.current = null;
-      }
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('click', handleClickCapture, { capture: true });
       window.removeEventListener('mousedown', handleMouseDown);
@@ -229,7 +217,7 @@ function CustomMagneticCursor() {
       document.removeEventListener('mouseleave', handleMouseLeave);
       document.removeEventListener('mouseenter', handleMouseEnter);
     };
-  }, [isFinePointer, mouseX, mouseY]);
+  }, [isFinePointer, mouseX, mouseY, setSnappedButtonId, setIsSnappedClicking]);
 
   if (!isFinePointer || !isVisible) return null;
 
@@ -294,6 +282,8 @@ export default function App() {
   const [inputVal, setInputVal] = useState('');
   const [shake, setShake] = useState(false);
   const [filter, setFilter] = useState<'all' | 'open' | 'done'>('all');
+  const [snappedButtonId, setSnappedButtonId] = useState<string | null>(null);
+  const [isSnappedClicking, setIsSnappedClicking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Sync tasks to localStorage
@@ -353,6 +343,9 @@ export default function App() {
 
   const deleteTask = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (snappedButtonId === `del-btn-${id}`) {
+      setSnappedButtonId(null);
+    }
     setTasks((prev) => prev.filter((t) => t.id !== id));
   };
 
@@ -363,7 +356,12 @@ export default function App() {
   return (
     <div className="relative min-h-screen min-h-[100dvh] w-full bg-[#F5F4EE] text-black overflow-x-hidden selection:bg-[#84E425] selection:text-black">
       {/* Custom Fluid Magnetic Apple Cursor (active by default, hidden on touch screens) */}
-      <CustomMagneticCursor />
+      <CustomMagneticCursor
+        snappedButtonId={snappedButtonId}
+        setSnappedButtonId={setSnappedButtonId}
+        isSnappedClicking={isSnappedClicking}
+        setIsSnappedClicking={setIsSnappedClicking}
+      />
 
       {/* Background Architectural Ruled Grid Lines - full bleed on all screen sizes */}
       <motion.div
@@ -688,6 +686,8 @@ export default function App() {
                       <AnimatePresence mode="popLayout">
                         {filteredTasks.map((task, index) => {
                           const itemNumber = formatTwoDigits(index + 1);
+                          const isDelSnapped = snappedButtonId === `del-btn-${task.id}`;
+                          const isChkSnapped = snappedButtonId === `chk-btn-${task.id}`;
                           return (
                             <motion.li
                               key={task.id}
@@ -714,16 +714,21 @@ export default function App() {
 
                                   {/* Fluid Brutalist Checkbox Button (Magnetic snap target) */}
                                   <motion.button
+                                    id={`chk-btn-${task.id}`}
                                     type="button"
                                     onClick={() => toggleTask(task.id)}
                                     title={task.completed ? "Mark task as open" : "Mark task as completed"}
+                                    animate={
+                                      isChkSnapped
+                                        ? isSnappedClicking
+                                          ? { scale: 0.88, backgroundColor: task.completed ? LIME_ACCENT : '#FFFFFF' }
+                                          : { scale: 1.15, backgroundColor: task.completed ? LIME_ACCENT : '#FFFFFF' }
+                                        : { scale: 1, backgroundColor: task.completed ? LIME_ACCENT : '#FFFFFF' }
+                                    }
                                     whileHover={{ scale: 1.15 }}
                                     whileTap={{ scale: 0.88 }}
                                     transition={APPLE_BOUNCE_SPRING}
-                                    animate={{
-                                      backgroundColor: task.completed ? LIME_ACCENT : '#FFFFFF',
-                                    }}
-                                    className="chk-btn w-5 h-5 sm:w-6 sm:h-6 border-2 border-black flex items-center justify-center shrink-0 cursor-pointer"
+                                    className="w-5 h-5 sm:w-6 sm:h-6 border-2 border-black flex items-center justify-center shrink-0 cursor-pointer"
                                   >
                                     <AnimatePresence>
                                       {task.completed && (
@@ -774,19 +779,31 @@ export default function App() {
 
                                 {/* Delete Button: Non-rotating bouncy button with rotating cross inside */}
                                 <motion.button
+                                  id={`del-btn-${task.id}`}
                                   type="button"
+                                  animate={
+                                    isDelSnapped
+                                      ? isSnappedClicking
+                                        ? 'btnTap'
+                                        : 'btnHover'
+                                      : undefined
+                                  }
                                   whileHover="btnHover"
                                   whileTap="btnTap"
                                   initial="btnInitial"
                                   variants={{
-                                    btnInitial: { scale: 1 },
+                                    btnInitial: { scale: 1, backgroundColor: 'rgba(0,0,0,0)', color: '#000000' },
                                     btnHover: { scale: 1.15, backgroundColor: '#000000', color: '#ffffff' },
-                                    btnTap: { scale: 0.82 },
+                                    btnTap: { scale: 0.82, backgroundColor: '#000000', color: '#ffffff' },
                                   }}
                                   transition={BOUNCY_BUTTON_SPRING}
                                   onClick={(e) => deleteTask(task.id, e)}
                                   title="Delete task"
-                                  className="del-btn opacity-60 group-hover:opacity-100 border border-transparent hover:border-black w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center cursor-pointer shrink-0 transition-colors"
+                                  className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center cursor-pointer shrink-0 border transition-colors ${
+                                    isDelSnapped
+                                      ? 'opacity-100 border-black'
+                                      : 'opacity-60 group-hover:opacity-100 hover:border-black border-transparent'
+                                  }`}
                                 >
                                   <motion.span
                                     variants={{
@@ -795,7 +812,7 @@ export default function App() {
                                       btnTap: { rotate: 180 },
                                     }}
                                     transition={{ type: 'spring', stiffness: 450, damping: 18 }}
-                                    className="cross-icon font-mono-brutal text-lg sm:text-xl font-bold leading-none inline-block select-none"
+                                    className="font-mono-brutal text-lg sm:text-xl font-bold leading-none inline-block select-none pointer-events-none"
                                   >
                                     ×
                                   </motion.span>

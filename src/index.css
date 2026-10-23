@@ -52,21 +52,3 @@
     cursor: none !important;
   }
 }
-
-/* Instant smooth animations when buttons are magnetically snapped */
-.magnetic-snapped {
-  transform: scale(1.15) !important;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, color 0.2s ease !important;
-}
-
-.magnetic-snapped.del-btn {
-  background-color: #000000 !important;
-  color: #ffffff !important;
-  border-color: #000000 !important;
-  opacity: 1 !important;
-}
-
-.magnetic-snapped .cross-icon {
-  transform: rotate(90deg) !important;
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
-}
