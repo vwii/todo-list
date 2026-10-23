@@ -17,17 +17,6 @@ interface Task {
 const STORAGE_KEY = 'brutalist_todo_tasks';
 const LIME_ACCENT = '#84E425';
 
-const DEFAULT_TASKS: Task[] = [
-  { id: '1', text: 'ESTABLISH ARCHITECTURAL BRUTALIST SYSTEM', completed: true, createdAt: 1 },
-  { id: '2', text: 'CALIBRATE MATHEMATICAL EXPONENTIAL DECAY LERP', completed: false, createdAt: 2 },
-  { id: '3', text: 'ELIMINATE NOTCHED MOUSE WHEEL STEPPING', completed: false, createdAt: 3 },
-  { id: '4', text: 'SYNCHRONIZE CONTINUOUS FRAME-BY-FRAME TIMINGS', completed: false, createdAt: 4 },
-  { id: '5', text: 'TUNE MOMENTUM FRICTION AND VELOCITY ACCUMULATION', completed: false, createdAt: 5 },
-  { id: '6', text: 'UNIFY MAGNETIC AURA AND ROTATING CROSS DETECTORS', completed: true, createdAt: 6 },
-  { id: '7', text: 'VERIFY BUTTERY SMOOTH DUAL-BUFFERED TOUCH FEEL', completed: false, createdAt: 7 },
-  { id: '8', text: 'AUDIT 120FPS GPU SPRING GLIDE RESPONSE', completed: false, createdAt: 8 },
-];
-
 // Apple fluid spring configurations
 const APPLE_SPRING = {
   type: 'spring' as const,
@@ -351,14 +340,14 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
     } catch {
       // fallback
     }
-    return DEFAULT_TASKS;
+    return [];
   });
 
   const [inputVal, setInputVal] = useState('');
